@@ -17,7 +17,12 @@
 
 package defs
 
+// SessionSlotCount is the number of solo session slots (0 to SessionSlotCount-1).
 const SessionSlotCount = 5
+
+// CoopSessionSlot is the one session slot for co-op runs, next to the solo slots.
+// It only holds saves with a co-op block, and the solo slots never do.
+const CoopSessionSlot = 5
 
 type SystemSaveData struct {
 	TrainerId          int                `json:"trainerId"`
@@ -121,6 +126,44 @@ type SessionSaveData struct {
 	MysteryEncounterType     MysteryEncounterType     `json:"mysteryEncounterType"`
 	MysteryEncounterSaveData MysteryEncounterSaveData `json:"mysteryEncounterSaveData"`
 	Name                     string                   `json:"name,omitempty"`
+	Coop                     *CoopSessionData         `json:"coop,omitempty"`
+}
+
+// CoopSessionData is what a co-op run saves besides the solo session fields. Only the host's account keeps the
+// save; the guest's client never writes one. The server stores it as is and checks nothing but its presence.
+type CoopSessionData struct {
+	// Protocol is the co-op protocol version of the client that saved
+	Protocol     int              `json:"protocol"`
+	Participants CoopParticipants `json:"participants"`
+	// Ownership maps party pokemon ids to the role owning them ("host" or "guest")
+	Ownership map[int]string `json:"ownership"`
+	// Accounts holds the account data each player's simulation used, by role
+	Accounts   CoopAccounts `json:"accounts"`
+	TimedEvent *string      `json:"timedEvent"`
+	// DecisionSeq, RewardGen and RewardSeq are the co-op counters both clients resume from
+	DecisionSeq int `json:"decisionSeq"`
+	RewardGen   int `json:"rewardGen"`
+	RewardSeq   int `json:"rewardSeq"`
+}
+
+// CoopParticipants holds the account names of both players.
+type CoopParticipants struct {
+	Host  string `json:"host"`
+	Guest string `json:"guest"`
+}
+
+type CoopAccounts struct {
+	Host  CoopAccountSnapshot `json:"host"`
+	Guest CoopAccountSnapshot `json:"guest"`
+}
+
+// CoopAccountSnapshot is the part of an account the co-op battle simulation reads.
+type CoopAccountSnapshot struct {
+	TrainerId     int         `json:"trainerId"`
+	SecretId      int         `json:"secretId"`
+	CaughtSpecies []int       `json:"caughtSpecies"`
+	EggMoves      map[int]int `json:"eggMoves"`
+	Unlocks       []int       `json:"unlocks"`
 }
 
 type ChallengeData struct {

@@ -120,6 +120,13 @@ func (s *store) ReadSessionSaveData(uuid []byte, slot int) (defs.SessionSaveData
 		return session, err
 	}
 
+	return decodeSessionSaveData(data)
+}
+
+// decodeSessionSaveData reads session save data as stored in the database (gob, zstd compressed).
+func decodeSessionSaveData(data []byte) (defs.SessionSaveData, error) {
+	var session defs.SessionSaveData
+
 	zr, err := zstd.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return session, err
@@ -135,6 +142,28 @@ func (s *store) ReadSessionSaveData(uuid []byte, slot int) (defs.SessionSaveData
 	return session, nil
 }
 
+// encodeSessionSaveData writes session save data the way the database stores it (gob, zstd compressed).
+func encodeSessionSaveData(data defs.SessionSaveData) ([]byte, error) {
+	buf := new(bytes.Buffer)
+
+	zw, err := zstd.NewWriter(buf)
+	if err != nil {
+		return nil, err
+	}
+
+	err = gob.NewEncoder(zw).Encode(data)
+	if err != nil {
+		return nil, err
+	}
+
+	err = zw.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
 func (s *store) GetLatestSessionSaveDataSlot(uuid []byte) (int, error) {
 	var slot int
 	err := handle.QueryRow("SELECT slot FROM sessionSaveData WHERE uuid = ? ORDER BY timestamp DESC, slot ASC LIMIT 1", uuid).Scan(&slot)
@@ -146,24 +175,12 @@ func (s *store) GetLatestSessionSaveDataSlot(uuid []byte) (int, error) {
 }
 
 func (s *store) StoreSessionSaveData(uuid []byte, data defs.SessionSaveData, slot int) error {
-	buf := new(bytes.Buffer)
-
-	zw, err := zstd.NewWriter(buf)
+	encoded, err := encodeSessionSaveData(data)
 	if err != nil {
 		return err
 	}
 
-	err = gob.NewEncoder(zw).Encode(data)
-	if err != nil {
-		return err
-	}
-
-	err = zw.Close()
-	if err != nil {
-		return err
-	}
-
-	_, err = handle.Exec("REPLACE INTO sessionSaveData (uuid, slot, data, timestamp) VALUES (?, ?, ?, UTC_TIMESTAMP())", uuid, slot, buf.Bytes())
+	_, err = handle.Exec("REPLACE INTO sessionSaveData (uuid, slot, data, timestamp) VALUES (?, ?, ?, UTC_TIMESTAMP())", uuid, slot, encoded)
 	if err != nil {
 		return err
 	}
