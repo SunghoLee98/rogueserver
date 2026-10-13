@@ -36,3 +36,22 @@ func ValidateSessionSlot(slot int) error {
 func IsCoopSessionSlot(slot int) bool {
 	return slot == defs.CoopSessionSlot
 }
+
+// ValidateSessionSlotData checks that a session save fits its slot:
+// the co-op slot only takes saves with a co-op block, and the solo slots never do.
+func ValidateSessionSlotData(slot int, save defs.SessionSaveData) error {
+	err := ValidateSessionSlot(slot)
+	if err != nil {
+		return err
+	}
+
+	if IsCoopSessionSlot(slot) && save.Coop == nil {
+		return fmt.Errorf("slot id %d only accepts co-op saves", slot)
+	}
+
+	if !IsCoopSessionSlot(slot) && save.Coop != nil {
+		return fmt.Errorf("slot id %d does not accept co-op saves", slot)
+	}
+
+	return nil
+}
