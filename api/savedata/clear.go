@@ -18,7 +18,6 @@
 package savedata
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/pagefaultgames/rogueserver/defs"
@@ -47,8 +46,9 @@ func Clear[T ClearStore](store T, uuid []byte, slot int, seed string, save defs.
 		log.Print("failed to update account last activity")
 	}
 
-	if slot < 0 || slot >= defs.SessionSlotCount {
-		return response, fmt.Errorf("slot id %d out of range", slot)
+	err = ValidateSessionSlot(slot)
+	if err != nil {
+		return response, err
 	}
 
 	sessionCompleted := validateSessionCompleted(save)

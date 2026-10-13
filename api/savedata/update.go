@@ -45,8 +45,9 @@ func Update[T UpdateStore](store T, uuid []byte, slot int, save any) error {
 
 		return UpdateSystem(store, uuid, save)
 	case defs.SessionSaveData: // Session
-		if slot < 0 || slot >= defs.SessionSlotCount {
-			return fmt.Errorf("slot id %d out of range", slot)
+		err = ValidateSessionSlot(slot)
+		if err != nil {
+			return err
 		}
 
 		return UpdateSession(store, uuid, slot, save)
