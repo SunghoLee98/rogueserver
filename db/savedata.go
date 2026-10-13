@@ -53,13 +53,18 @@ func (s *store) ReadSeedCompleted(uuid []byte, seed string) (bool, error) {
 }
 
 func (s *store) ReadSystemSaveData(uuid []byte) (defs.SystemSaveData, error) {
-	var system defs.SystemSaveData
-
 	var data []byte
 	err := handle.QueryRow("SELECT data FROM systemSaveData WHERE uuid = ?", uuid).Scan(&data)
 	if err != nil {
-		return system, err
+		return defs.SystemSaveData{}, err
 	}
+
+	return decodeSystemSaveData(data)
+}
+
+// decodeSystemSaveData reads system save data as stored in the database (gob, zstd compressed).
+func decodeSystemSaveData(data []byte) (defs.SystemSaveData, error) {
+	var system defs.SystemSaveData
 
 	zr, err := zstd.NewReader(bytes.NewReader(data))
 	if err != nil {
@@ -76,25 +81,35 @@ func (s *store) ReadSystemSaveData(uuid []byte) (defs.SystemSaveData, error) {
 	return system, nil
 }
 
-func (s *store) StoreSystemSaveData(uuid []byte, data defs.SystemSaveData) error {
+// encodeSystemSaveData writes system save data the way the database stores it (gob, zstd compressed).
+func encodeSystemSaveData(data defs.SystemSaveData) ([]byte, error) {
 	buf := new(bytes.Buffer)
 
 	zw, err := zstd.NewWriter(buf)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = gob.NewEncoder(zw).Encode(data)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = zw.Close()
 	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (s *store) StoreSystemSaveData(uuid []byte, data defs.SystemSaveData) error {
+	encoded, err := encodeSystemSaveData(data)
+	if err != nil {
 		return err
 	}
 
-	_, err = handle.Exec("REPLACE INTO systemSaveData (uuid, data, timestamp) VALUES (?, ?, UTC_TIMESTAMP())", uuid, buf.Bytes())
+	_, err = handle.Exec("REPLACE INTO systemSaveData (uuid, data, timestamp) VALUES (?, ?, UTC_TIMESTAMP())", uuid, encoded)
 	if err != nil {
 		return err
 	}
