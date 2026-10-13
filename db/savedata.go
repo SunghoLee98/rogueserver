@@ -166,7 +166,8 @@ func encodeSessionSaveData(data defs.SessionSaveData) ([]byte, error) {
 
 func (s *store) GetLatestSessionSaveDataSlot(uuid []byte) (int, error) {
 	var slot int
-	err := handle.QueryRow("SELECT slot FROM sessionSaveData WHERE uuid = ? ORDER BY timestamp DESC, slot ASC LIMIT 1", uuid).Scan(&slot)
+	// Only solo slots: the title screen continues this slot as a solo run.
+	err := handle.QueryRow("SELECT slot FROM sessionSaveData WHERE uuid = ? AND slot < ? ORDER BY timestamp DESC, slot ASC LIMIT 1", uuid, defs.SessionSlotCount).Scan(&slot)
 	if err != nil {
 		return -1, err
 	}

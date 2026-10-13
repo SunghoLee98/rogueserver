@@ -51,6 +51,16 @@ func Clear[T ClearStore](store T, uuid []byte, slot int, seed string, save defs.
 		return response, err
 	}
 
+	// Co-op clears are not classic clears: no seed completion or daily record, only drop the save.
+	if IsCoopSessionSlot(slot) {
+		err = store.DeleteSessionSaveData(uuid, slot)
+		if err != nil {
+			log.Printf("failed to delete session save data: %s", err)
+		}
+
+		return response, nil
+	}
+
 	sessionCompleted := validateSessionCompleted(save)
 
 	if save.GameMode == 3 && save.Seed == seed {

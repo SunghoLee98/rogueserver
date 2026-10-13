@@ -35,6 +35,11 @@ func NewClear[T NewClearStore](store T, uuid []byte, slot int) (bool, error) {
 		return false, err
 	}
 
+	// The client never asks for co-op runs; a co-op clear never counts as a new classic clear.
+	if IsCoopSessionSlot(slot) {
+		return false, nil
+	}
+
 	session, err := store.ReadSessionSaveData(uuid, slot)
 	if err != nil {
 		return false, err
