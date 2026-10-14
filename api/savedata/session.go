@@ -47,7 +47,12 @@ type UpdateSessionStore interface {
 }
 
 func UpdateSession[T UpdateSessionStore](store T, uuid []byte, slot int, data defs.SessionSaveData) error {
-	err := store.StoreSessionSaveData(uuid, data, slot)
+	err := ValidateSessionSlotData(slot, data)
+	if err != nil {
+		return err
+	}
+
+	err = store.StoreSessionSaveData(uuid, data, slot)
 	if err != nil {
 		return err
 	}

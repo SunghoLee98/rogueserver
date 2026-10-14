@@ -53,13 +53,18 @@ func (s *store) ReadSeedCompleted(uuid []byte, seed string) (bool, error) {
 }
 
 func (s *store) ReadSystemSaveData(uuid []byte) (defs.SystemSaveData, error) {
-	var system defs.SystemSaveData
-
 	var data []byte
 	err := handle.QueryRow("SELECT data FROM systemSaveData WHERE uuid = ?", uuid).Scan(&data)
 	if err != nil {
-		return system, err
+		return defs.SystemSaveData{}, err
 	}
+
+	return decodeSystemSaveData(data)
+}
+
+// decodeSystemSaveData reads system save data as stored in the database (gob, zstd compressed).
+func decodeSystemSaveData(data []byte) (defs.SystemSaveData, error) {
+	var system defs.SystemSaveData
 
 	zr, err := zstd.NewReader(bytes.NewReader(data))
 	if err != nil {
@@ -76,25 +81,35 @@ func (s *store) ReadSystemSaveData(uuid []byte) (defs.SystemSaveData, error) {
 	return system, nil
 }
 
-func (s *store) StoreSystemSaveData(uuid []byte, data defs.SystemSaveData) error {
+// encodeSystemSaveData writes system save data the way the database stores it (gob, zstd compressed).
+func encodeSystemSaveData(data defs.SystemSaveData) ([]byte, error) {
 	buf := new(bytes.Buffer)
 
 	zw, err := zstd.NewWriter(buf)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = gob.NewEncoder(zw).Encode(data)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = zw.Close()
 	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (s *store) StoreSystemSaveData(uuid []byte, data defs.SystemSaveData) error {
+	encoded, err := encodeSystemSaveData(data)
+	if err != nil {
 		return err
 	}
 
-	_, err = handle.Exec("REPLACE INTO systemSaveData (uuid, data, timestamp) VALUES (?, ?, UTC_TIMESTAMP())", uuid, buf.Bytes())
+	_, err = handle.Exec("REPLACE INTO systemSaveData (uuid, data, timestamp) VALUES (?, ?, UTC_TIMESTAMP())", uuid, encoded)
 	if err != nil {
 		return err
 	}
@@ -120,6 +135,13 @@ func (s *store) ReadSessionSaveData(uuid []byte, slot int) (defs.SessionSaveData
 		return session, err
 	}
 
+	return decodeSessionSaveData(data)
+}
+
+// decodeSessionSaveData reads session save data as stored in the database (gob, zstd compressed).
+func decodeSessionSaveData(data []byte) (defs.SessionSaveData, error) {
+	var session defs.SessionSaveData
+
 	zr, err := zstd.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return session, err
@@ -135,9 +157,32 @@ func (s *store) ReadSessionSaveData(uuid []byte, slot int) (defs.SessionSaveData
 	return session, nil
 }
 
+// encodeSessionSaveData writes session save data the way the database stores it (gob, zstd compressed).
+func encodeSessionSaveData(data defs.SessionSaveData) ([]byte, error) {
+	buf := new(bytes.Buffer)
+
+	zw, err := zstd.NewWriter(buf)
+	if err != nil {
+		return nil, err
+	}
+
+	err = gob.NewEncoder(zw).Encode(data)
+	if err != nil {
+		return nil, err
+	}
+
+	err = zw.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
 func (s *store) GetLatestSessionSaveDataSlot(uuid []byte) (int, error) {
 	var slot int
-	err := handle.QueryRow("SELECT slot FROM sessionSaveData WHERE uuid = ? ORDER BY timestamp DESC, slot ASC LIMIT 1", uuid).Scan(&slot)
+	// Only solo slots: the title screen continues this slot as a solo run.
+	err := handle.QueryRow("SELECT slot FROM sessionSaveData WHERE uuid = ? AND slot < ? ORDER BY timestamp DESC, slot ASC LIMIT 1", uuid, defs.SessionSlotCount).Scan(&slot)
 	if err != nil {
 		return -1, err
 	}
@@ -146,24 +191,12 @@ func (s *store) GetLatestSessionSaveDataSlot(uuid []byte) (int, error) {
 }
 
 func (s *store) StoreSessionSaveData(uuid []byte, data defs.SessionSaveData, slot int) error {
-	buf := new(bytes.Buffer)
-
-	zw, err := zstd.NewWriter(buf)
+	encoded, err := encodeSessionSaveData(data)
 	if err != nil {
 		return err
 	}
 
-	err = gob.NewEncoder(zw).Encode(data)
-	if err != nil {
-		return err
-	}
-
-	err = zw.Close()
-	if err != nil {
-		return err
-	}
-
-	_, err = handle.Exec("REPLACE INTO sessionSaveData (uuid, slot, data, timestamp) VALUES (?, ?, ?, UTC_TIMESTAMP())", uuid, slot, buf.Bytes())
+	_, err = handle.Exec("REPLACE INTO sessionSaveData (uuid, slot, data, timestamp) VALUES (?, ?, ?, UTC_TIMESTAMP())", uuid, slot, encoded)
 	if err != nil {
 		return err
 	}

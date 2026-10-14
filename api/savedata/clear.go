@@ -18,7 +18,6 @@
 package savedata
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/pagefaultgames/rogueserver/defs"
@@ -47,8 +46,19 @@ func Clear[T ClearStore](store T, uuid []byte, slot int, seed string, save defs.
 		log.Print("failed to update account last activity")
 	}
 
-	if slot < 0 || slot >= defs.SessionSlotCount {
-		return response, fmt.Errorf("slot id %d out of range", slot)
+	err = ValidateSessionSlot(slot)
+	if err != nil {
+		return response, err
+	}
+
+	// Co-op clears are not classic clears: no seed completion or daily record, only drop the save.
+	if IsCoopSessionSlot(slot) {
+		err = store.DeleteSessionSaveData(uuid, slot)
+		if err != nil {
+			log.Printf("failed to delete session save data: %s", err)
+		}
+
+		return response, nil
 	}
 
 	sessionCompleted := validateSessionCompleted(save)

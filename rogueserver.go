@@ -22,8 +22,11 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/pagefaultgames/rogueserver/api"
@@ -59,7 +62,9 @@ func main() {
 	discordbottoken := getEnv("discordbottoken", "")
 	discordguildid := getEnv("discordguildid", "")
 
-	account.GameURL = gameurl
+	// gameurl may list several comma-separated game URLs; OAuth sends players
+	// back to the first one, and CORS allows the origin of each.
+	account.GameURL = primaryGameURL(gameurl)
 
 	account.DiscordClientID = discordclientid
 	account.DiscordClientSecret = discordsecretid
@@ -95,7 +100,7 @@ func main() {
 	}
 
 	// start web server
-	handler := prodHandler(mux, gameurl)
+	handler := prodHandler(mux, parseAllowedOrigins(gameurl))
 	if debug {
 		handler = debugHandler(mux)
 	}
@@ -130,11 +135,50 @@ func createListener(proto, addr string) (net.Listener, error) {
 	return listener, nil
 }
 
-func prodHandler(router *http.ServeMux, clienturl string) http.Handler {
+// primaryGameURL returns the first entry of a comma-separated gameurl list.
+func primaryGameURL(gameurls string) string {
+	first, _, _ := strings.Cut(gameurls, ",")
+	return strings.TrimSpace(first)
+}
+
+// parseAllowedOrigins turns a comma-separated gameurl list into the distinct
+// origins (scheme://host[:port]) that may call the API from a browser.
+func parseAllowedOrigins(gameurls string) []string {
+	var origins []string
+	seen := map[string]bool{}
+	for _, raw := range strings.Split(gameurls, ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		origin := raw
+		if u, err := url.Parse(raw); err == nil && u.Scheme != "" && u.Host != "" {
+			origin = u.Scheme + "://" + u.Host
+		}
+		if !seen[origin] {
+			seen[origin] = true
+			origins = append(origins, origin)
+		}
+	}
+	return origins
+}
+
+func prodHandler(router *http.ServeMux, origins []string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, PKR-Client-Version")
 		w.Header().Set("Access-Control-Allow-Methods", "OPTIONS, GET, POST")
-		w.Header().Set("Access-Control-Allow-Origin", clienturl)
+		w.Header().Add("Vary", "Origin")
+
+		allowOrigin := ""
+		if len(origins) > 0 {
+			allowOrigin = origins[0]
+		}
+		if requestOrigin := r.Header.Get("Origin"); slices.Contains(origins, requestOrigin) {
+			allowOrigin = requestOrigin
+		}
+		if allowOrigin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		}
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)

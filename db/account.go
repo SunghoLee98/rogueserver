@@ -246,44 +246,9 @@ func (s *store) UpdateAccountLastActivity(uuid []byte) error {
 }
 
 func (s *store) UpdateAccountStats(uuid []byte, stats defs.GameStats, voucherCounts map[string]int) error {
-	var columns = []string{"playTime", "battles", "classicSessionsPlayed", "sessionsWon", "highestEndlessWave", "highestLevel", "pokemonSeen", "pokemonDefeated", "pokemonCaught", "pokemonHatched", "eggsPulled", "regularVouchers", "plusVouchers", "premiumVouchers", "goldenVouchers"}
-
-	var statCols []string
-	var statValues []interface{}
-
-	m, ok := stats.(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("expected map[string]interface{}, got %T", stats)
-	}
-
-	for k, v := range m {
-		value, ok := v.(float64)
-		if !ok {
-			return fmt.Errorf("expected float64, got %T", v)
-		}
-
-		if slices.Contains(columns, k) {
-			statCols = append(statCols, k)
-			statValues = append(statValues, value)
-		}
-	}
-
-	for k, v := range voucherCounts {
-		var column string
-		switch k {
-		case "0":
-			column = "regularVouchers"
-		case "1":
-			column = "plusVouchers"
-		case "2":
-			column = "premiumVouchers"
-		case "3":
-			column = "goldenVouchers"
-		default:
-			continue
-		}
-		statCols = append(statCols, column)
-		statValues = append(statValues, v)
+	statCols, statValues, err := accountStatColumns(stats, voucherCounts)
+	if err != nil {
+		return err
 	}
 
 	var statArgs []interface{}
@@ -314,7 +279,7 @@ func (s *store) UpdateAccountStats(uuid []byte, stats defs.GameStats, voucherCou
 		query += col + " = ?"
 	}
 
-	_, err := handle.Exec(query, statArgs...)
+	_, err = handle.Exec(query, statArgs...)
 	if err != nil {
 		return err
 	}
@@ -486,4 +451,50 @@ func (s *store) RemoveGoogleIdByDiscordId(discordId string) error {
 	}
 
 	return nil
+}
+
+// accountStatColumns picks the game stats and voucher counts that have a column in the accountStats table.
+// Other stats (such as the co-op run counts) stay in the system save only.
+func accountStatColumns(stats defs.GameStats, voucherCounts map[string]int) ([]string, []interface{}, error) {
+	var columns = []string{"playTime", "battles", "classicSessionsPlayed", "sessionsWon", "highestEndlessWave", "highestLevel", "pokemonSeen", "pokemonDefeated", "pokemonCaught", "pokemonHatched", "eggsPulled", "regularVouchers", "plusVouchers", "premiumVouchers", "goldenVouchers"}
+
+	var statCols []string
+	var statValues []interface{}
+
+	m, ok := stats.(map[string]interface{})
+	if !ok {
+		return nil, nil, fmt.Errorf("expected map[string]interface{}, got %T", stats)
+	}
+
+	for k, v := range m {
+		value, ok := v.(float64)
+		if !ok {
+			return nil, nil, fmt.Errorf("expected float64, got %T", v)
+		}
+
+		if slices.Contains(columns, k) {
+			statCols = append(statCols, k)
+			statValues = append(statValues, value)
+		}
+	}
+
+	for k, v := range voucherCounts {
+		var column string
+		switch k {
+		case "0":
+			column = "regularVouchers"
+		case "1":
+			column = "plusVouchers"
+		case "2":
+			column = "premiumVouchers"
+		case "3":
+			column = "goldenVouchers"
+		default:
+			continue
+		}
+		statCols = append(statCols, column)
+		statValues = append(statValues, v)
+	}
+
+	return statCols, statValues, nil
 }

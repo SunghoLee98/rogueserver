@@ -20,8 +20,6 @@ package savedata
 import (
 	"fmt"
 	"log"
-
-	"github.com/pagefaultgames/rogueserver/defs"
 )
 
 // Interface for database operations needed for delete.
@@ -40,8 +38,8 @@ func Delete[T DeleteStore](store T, uuid []byte, datatype, slot int) error {
 
 	switch datatype {
 	case 1: // Session
-		if slot < 0 || slot >= defs.SessionSlotCount {
-			err = fmt.Errorf("slot id %d out of range", slot)
+		err = ValidateSessionSlot(slot)
+		if err != nil {
 			break
 		}
 

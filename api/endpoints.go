@@ -271,8 +271,9 @@ func handleSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if slot < 0 || slot >= defs.SessionSlotCount {
-		httpError(w, r, fmt.Errorf("slot id %d out of range", slot), http.StatusBadRequest)
+	err = savedata.ValidateSessionSlot(slot)
+	if err != nil {
+		httpError(w, r, err, http.StatusBadRequest)
 		return
 	}
 

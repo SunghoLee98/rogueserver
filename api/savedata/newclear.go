@@ -30,8 +30,14 @@ type NewClearStore interface {
 
 // /savedata/newclear - return whether a session is a new clear for its seed
 func NewClear[T NewClearStore](store T, uuid []byte, slot int) (bool, error) {
-	if slot < 0 || slot >= defs.SessionSlotCount {
-		return false, fmt.Errorf("slot id %d out of range", slot)
+	err := ValidateSessionSlot(slot)
+	if err != nil {
+		return false, err
+	}
+
+	// The client never asks for co-op runs; a co-op clear never counts as a new classic clear.
+	if IsCoopSessionSlot(slot) {
+		return false, nil
 	}
 
 	session, err := store.ReadSessionSaveData(uuid, slot)
